@@ -26,12 +26,24 @@ COLOR_GRAY  = RGBColor(0x59, 0x59, 0x59)   # дата, подзаголовок 
 # ── Извлечение текста ──────────────────────────────────────────────
 def extract_text(filepath, filename):
     ext = filename.lower().rsplit(".", 1)[-1]
-    if ext == "docx":
-        return subprocess.run(["pandoc", filepath, "-t", "plain"],
-                              capture_output=True, text=True).stdout
+    if ext in ("docx", "doc"):
+        result = subprocess.run(["pandoc", filepath, "-t", "plain"],
+                                capture_output=True, text=True)
+        if result.stdout.strip():
+            return result.stdout
+        # Fallback через LibreOffice для .doc
+        tmp_dir = os.path.dirname(filepath)
+        subprocess.run(["libreoffice", "--headless", "--convert-to", "docx",
+                        "--outdir", tmp_dir, filepath], capture_output=True)
+        docx_path = filepath.rsplit(".", 1)[0] + ".docx"
+        if os.path.exists(docx_path):
+            return subprocess.run(["pandoc", docx_path, "-t", "plain"],
+                                  capture_output=True, text=True).stdout
+        return result.stdout
     elif ext == "pdf":
-        return subprocess.run(["pdftotext", filepath, "-"],
-                              capture_output=True, text=True).stdout
+        result = subprocess.run(["pdftotext", filepath, "-"],
+                                capture_output=True, text=True)
+        return result.stdout
     with open(filepath, "r", errors="ignore") as f:
         return f.read()
 
