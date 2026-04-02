@@ -357,14 +357,42 @@ def format_resume():
         inp = os.path.join(tmp, fname)
         out = os.path.join(tmp, "result.docx")
         file.save(inp)
-        text = extract_text(inp, fname)
+        # Извлечение текста
+        try:
+            text = extract_text(inp, fname)
+        except Exception as e:
+            return jsonify({"error": f"Не удалось прочитать файл: {str(e)}"}), 400
+
         if not text.strip():
-            return jsonify({"error":"Cannot extract text"}), 400
-        data = parse_with_claude(text)
-        build_resume(data, out)
-        slug = data.get("name","resume").replace(" ","_").replace(".","")
+            ext = fname.lower().rsplit(".", 1)[-1]
+            reasons = {
+                "pdf": "PDF защищён паролем или содержит только изображения (сканированный документ)",
+                "doc": "Файл .doc повреждён или имеет неподдерживаемый формат",
+                "docx": "Файл .docx повреждён или зашифрован",
+            }
+            reason = reasons.get(ext, "Файл не содержит читаемого текста")
+            return jsonify({"error": reason}), 400
+
+        # Парсинг через Claude
+        try:
+            data = parse_with_claude(text)
+        except Exception as e:
+            return jsonify({"error": f"Не удалось распознать структуру резюме: {str(e)}"}), 400
+
+        # Генерация документа
+        try:
+            build_resume(data, out)
+        except Exception as e:
+            return jsonify({"error": f"Ошибка при создании документа: {str(e)}"}), 500
+        # Формат имени: "Равиль Х. Системный аналитик БизнесМатика.docx"
+        name = data.get("name", "Специалист")
+        position = data.get("position", "")
+        if position:
+            download_name = f"{name} {position} БизнесМатика.docx"
+        else:
+            download_name = f"{name} БизнесМатика.docx"
         return send_file(out, as_attachment=True,
-                         download_name=f"{slug}_БизнесМатика.docx",
+                         download_name=download_name,
                          mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 @app.route("/health")
